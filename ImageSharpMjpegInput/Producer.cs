@@ -3,14 +3,18 @@
 // After payment, the file is considered yours and no copyright notice is required (though it would be appreciated).
 // The file is provided as-is without any guarantee or support, and you still need to comply to the licenses of the dependencies of this file.
 
-using System.IO.Pipelines;
+using SixLabors.Fonts;
 using SixLabors.ImageSharp;
+using SixLabors.ImageSharp.ColorSpaces;
+using SixLabors.ImageSharp.ColorSpaces.Conversion;
+using SixLabors.ImageSharp.Drawing.Processing;
 using SixLabors.ImageSharp.PixelFormats;
 using SixLabors.ImageSharp.Processing;
-using SixLabors.ImageSharp.Drawing.Processing;
+using System.IO.Pipelines;
+using System.Numerics;
 using Brushes = SixLabors.ImageSharp.Drawing.Processing.Brushes;
+using Color = SixLabors.ImageSharp.Color;
 using PointF = SixLabors.ImageSharp.PointF;
-using SixLabors.Fonts;
 
 namespace ImageSharpMjpegInput;
 
@@ -24,10 +28,8 @@ internal static class Producer
         var fontCollection = new FontCollection();
         var family = fontCollection.Install("OpenSans-Regular.ttf");
         var font = family.CreateFont(40);
-        var fillColor = SystemColors.Highlight;
-        var fillBrush = Brushes.Solid(SixLabors.ImageSharp.Color.FromRgb(fillColor.R, fillColor.G, fillColor.B));
-        var textColor = SystemColors.HighlightText;
-        var textBrush = Brushes.Solid(SixLabors.ImageSharp.Color.FromRgb(textColor.R, textColor.G, textColor.B));
+        var textBrush = Brushes.Solid(Color.White);
+        var colorSpaceConverter = new ColorSpaceConverter();
 
         var textPosition = new PointF(400, 300);
         var textOptions = new DrawingOptions
@@ -40,10 +42,12 @@ internal static class Producer
         };
 
         var date = DateTime.Now;
+        var colorStep = 0;
         using var jpegOutputMemoryStream = new MemoryStream();
         while (!token.IsCancellationRequested)
         {
             // Draw the image
+            var fillBrush = Brushes.Solid(GetColor(colorSpaceConverter, colorStep));
             var text = date.ToString("o");
             image.Mutate(x =>
             {
@@ -75,8 +79,22 @@ internal static class Producer
             }
 
             date += increment;
+            colorStep = (colorStep + 1) % 360;
         }
 
         await writer.CompleteAsync();
+    }
+
+    /// <summary>
+    /// Changes the hue of the background color at each frame
+    /// </summary>
+    /// <param name="converter">The color converter</param>
+    /// <param name="colorStep">The color step, between 0 and 360</param>
+    /// <returns>The background color of this step</returns>
+    private static Color GetColor(ColorSpaceConverter converter, int colorStep)
+    {
+        var hsl = new Hsl(new Vector3(colorStep, 0.5f, 0.5f));
+        var rgb = converter.ToRgb(hsl);
+        return new Color((Rgba32)rgb);
     }
 }
